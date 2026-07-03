@@ -71,7 +71,7 @@ export async function middleware(request: NextRequest) {
       .from('admin_users')
       .select('id, is_active')
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
 
     if (!adminUser || !adminUser.is_active) {
       // Not an admin or inactive
@@ -87,7 +87,7 @@ export async function middleware(request: NextRequest) {
       .from('admin_users')
       .select('id, is_active')
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
 
     if (adminUser && adminUser.is_active) {
       const url = request.nextUrl.clone()
