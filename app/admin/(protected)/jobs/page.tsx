@@ -1,6 +1,9 @@
 "use client"
 
 import { useEffect, useState } from 'react'
+import { Eye, Copy, X } from 'lucide-react'
+import { useToast } from '@/components/ui/Toast'
+import ConfirmModal from '@/components/ui/ConfirmModal'
 
 interface CompanyOption {
   id: string
@@ -35,6 +38,7 @@ interface Job {
   responsibilities: string | null
   requirements: string | null
   benefits: string | null
+  expired_at: string | null
   created_at: string
   companies?: CompanyOption
   job_categories?: CategoryOption
@@ -46,9 +50,13 @@ export default function JobsPage() {
   const [categories, setCategories] = useState<CategoryOption[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
   const [editingJob, setEditingJob] = useState<Job | null>(null)
+  const [previewJob, setPreviewJob] = useState<Job | null>(null)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [showConfirm, setShowConfirm] = useState(false)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const { addToast } = useToast()
 
   const [form, setForm] = useState({
     title: '',
@@ -71,26 +79,36 @@ export default function JobsPage() {
     responsibilities: '',
     requirements: '',
     benefits: '',
+    expired_at: '',
   })
 
   const fetchData = async () => {
     setLoading(true)
-    const [jobsRes, companiesRes, categoriesRes] = await Promise.all([
-      fetch('/api/admin/jobs'),
-      fetch('/api/admin/companies'),
-      fetch('/api/admin/categories'),
-    ])
+    try {
+      const [jobsRes, companiesRes, categoriesRes] = await Promise.all([
+        fetch('/api/admin/jobs'),
+        fetch('/api/admin/companies'),
+        fetch('/api/admin/categories'),
+      ])
 
-    const [jobsData, companiesData, categoriesData] = await Promise.all([
-      jobsRes.json(),
-      companiesRes.json(),
-      categoriesRes.json(),
-    ])
+      const [jobsData, companiesData, categoriesData] = await Promise.all([
+        jobsRes.json(),
+        companiesRes.json(),
+        categoriesRes.json(),
+      ])
 
-    setJobs(jobsData)
-    setCompanies(companiesData)
-    setCategories(categoriesData)
-    setLoading(false)
+      if (!jobsRes.ok) throw new Error(jobsData.error)
+      if (!companiesRes.ok) throw new Error(companiesData.error)
+      if (!categoriesRes.ok) throw new Error(categoriesData.error)
+
+      setJobs(jobsData)
+      setCompanies(companiesData)
+      setCategories(categoriesData)
+    } catch (err: any) {
+      addToast({ type: 'error', message: err.message })
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -99,7 +117,6 @@ export default function JobsPage() {
 
   const openCreate = () => {
     setEditingJob(null)
-    setError(null)
     setForm({
       title: '',
       company_id: companies[0]?.id || '',
@@ -121,13 +138,13 @@ export default function JobsPage() {
       responsibilities: '',
       requirements: '',
       benefits: '',
+      expired_at: '',
     })
     setShowForm(true)
   }
 
   const openEdit = (job: Job) => {
     setEditingJob(job)
-    setError(null)
     setForm({
       title: job.title,
       company_id: job.company_id,
@@ -149,14 +166,76 @@ export default function JobsPage() {
       responsibilities: job.responsibilities || '',
       requirements: job.requirements || '',
       benefits: job.benefits || '',
+      expired_at: job.expired_at || '',
     })
     setShowForm(true)
+  }
+
+  const duplicateJob = (job: Job) => {
+    setEditingJob(null)
+    setForm({
+      title: `${job.title} (Copy)`,
+      company_id: job.company_id,
+      category_id: job.category_id,
+      location: job.location || '',
+      city: job.city || '',
+      province: job.province || '',
+      employment_type: job.employment_type || '',
+      work_arrangement: job.work_arrangement || '',
+      experience_level: job.experience_level || '',
+      salary_min: job.salary_min?.toString() || '',
+      salary_max: job.salary_max?.toString() || '',
+      show_salary: job.show_salary,
+      status: 'draft',
+      is_featured: false,
+      apply_whatsapp_number: job.apply_whatsapp_number || '',
+      apply_message_template: job.apply_message_template || '',
+      description: job.description || '',
+      responsibilities: job.responsibilities || '',
+      requirements: job.requirements || '',
+      benefits: job.benefits || '',
+      expired_at: '',
+    })
+    setShowForm(true)
+  }
+
+  const openPreview = () => {
+    const company = companies.find((c) => c.id === form.company_id)
+    const category = categories.find((c) => c.id === form.category_id)
+    setPreviewJob({
+      id: 'preview',
+      title: form.title,
+      slug: 'preview',
+      company_id: form.company_id,
+      category_id: form.category_id,
+      location: form.location || null,
+      city: form.city || null,
+      province: form.province || null,
+      employment_type: form.employment_type || null,
+      work_arrangement: form.work_arrangement || null,
+      experience_level: form.experience_level || null,
+      salary_min: form.salary_min ? Number(form.salary_min) : null,
+      salary_max: form.salary_max ? Number(form.salary_max) : null,
+      show_salary: form.show_salary,
+      status: form.status,
+      is_featured: form.is_featured,
+      apply_whatsapp_number: form.apply_whatsapp_number || null,
+      apply_message_template: form.apply_message_template || null,
+      description: form.description || null,
+      responsibilities: form.responsibilities || null,
+      requirements: form.requirements || null,
+      benefits: form.benefits || null,
+      expired_at: form.expired_at || null,
+      created_at: new Date().toISOString(),
+      companies: company ? { id: company.id, name: company.name } : undefined,
+      job_categories: category ? { id: category.id, name: category.name } : undefined,
+    })
+    setShowPreview(true)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
-    setError(null)
 
     try {
       const method = editingJob ? 'PATCH' : 'POST'
@@ -165,6 +244,7 @@ export default function JobsPage() {
         ...form,
         salary_min: form.salary_min ? Number(form.salary_min) : null,
         salary_max: form.salary_max ? Number(form.salary_max) : null,
+        expired_at: form.expired_at || null,
       }
 
       const res = await fetch(url, {
@@ -176,19 +256,37 @@ export default function JobsPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Gagal menyimpan lowongan.')
 
+      addToast({ type: 'success', message: 'Lowongan berhasil disimpan!' })
       setShowForm(false)
       fetchData()
     } catch (err: any) {
-      setError(err.message)
+      addToast({ type: 'error', message: err.message })
     } finally {
       setSaving(false)
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Hapus lowongan ini?')) return
-    await fetch(`/api/admin/jobs/${id}`, { method: 'DELETE' })
-    fetchData()
+  const openDeleteConfirm = (id: string) => {
+    setDeleteId(id)
+    setShowConfirm(true)
+  }
+
+  const handleDelete = async () => {
+    if (!deleteId) return
+    try {
+      const res = await fetch(`/api/admin/jobs/${deleteId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error)
+      }
+      addToast({ type: 'success', message: 'Lowongan berhasil dihapus!' })
+      fetchData()
+    } catch (err: any) {
+      addToast({ type: 'error', message: err.message })
+    } finally {
+      setShowConfirm(false)
+      setDeleteId(null)
+    }
   }
 
   return (
@@ -207,6 +305,7 @@ export default function JobsPage() {
         </button>
       </div>
 
+      {/* Form Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-start justify-center overflow-y-auto py-10 z-50">
           <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-4xl">
@@ -221,13 +320,9 @@ export default function JobsPage() {
                 onClick={() => setShowForm(false)}
                 className="text-gray-500 hover:text-gray-700"
               >
-                Tutup
+                <X className="w-5 h-5" />
               </button>
             </div>
-
-            {error && (
-              <div className="mb-4 p-4 rounded-lg bg-red-50 text-red-700">{error}</div>
-            )}
 
             <form onSubmit={handleSubmit} className="grid gap-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -277,16 +372,13 @@ export default function JobsPage() {
                   </select>
                 </label>
                 <label className="space-y-2 text-sm text-gray-700">
-                  Status
-                  <select
-                    value={form.status}
-                    onChange={(e) => setForm({ ...form, status: e.target.value })}
+                  Tanggal Kadaluarsa
+                  <input
+                    type="datetime-local"
+                    value={form.expired_at}
+                    onChange={(e) => setForm({ ...form, expired_at: e.target.value })}
                     className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="draft">Draft</option>
-                    <option value="published">Published</option>
-                    <option value="closed">Closed</option>
-                  </select>
+                  />
                 </label>
               </div>
 
@@ -391,6 +483,18 @@ export default function JobsPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <label className="space-y-2 text-sm text-gray-700">
+                  Status
+                  <select
+                    value={form.status}
+                    onChange={(e) => setForm({ ...form, status: e.target.value })}
+                    className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="draft">Draft</option>
+                    <option value="published">Published</option>
+                    <option value="closed">Closed</option>
+                  </select>
+                </label>
+                <label className="space-y-2 text-sm text-gray-700">
                   WhatsApp Apply
                   <input
                     type="text"
@@ -400,16 +504,17 @@ export default function JobsPage() {
                     className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </label>
-                <label className="space-y-2 text-sm text-gray-700">
-                  Template Pesan
-                  <input
-                    type="text"
-                    value={form.apply_message_template}
-                    onChange={(e) => setForm({ ...form, apply_message_template: e.target.value })}
-                    className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </label>
               </div>
+
+              <label className="space-y-2 text-sm text-gray-700">
+                Template Pesan WhatsApp
+                <input
+                  type="text"
+                  value={form.apply_message_template}
+                  onChange={(e) => setForm({ ...form, apply_message_template: e.target.value })}
+                  className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </label>
 
               <label className="space-y-2 text-sm text-gray-700">
                 Deskripsi *
@@ -455,6 +560,14 @@ export default function JobsPage() {
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
+                  onClick={openPreview}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition flex items-center gap-2"
+                >
+                  <Eye className="w-4 h-4" />
+                  Preview
+                </button>
+                <button
+                  type="button"
                   onClick={() => setShowForm(false)}
                   className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
                 >
@@ -469,6 +582,70 @@ export default function JobsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Preview Modal */}
+      {showPreview && previewJob && (
+        <div className="fixed inset-0 bg-black/40 flex items-start justify-center overflow-y-auto py-10 z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-3xl">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-gray-900">Preview Lowongan</h2>
+              <button
+                onClick={() => setShowPreview(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-2xl font-bold text-gray-900">{previewJob.title}</h3>
+                <p className="text-lg text-gray-700">{previewJob.companies?.name}</p>
+                <div className="flex gap-4 text-sm text-gray-500 mt-2">
+                  {previewJob.location && <span>{previewJob.location}</span>}
+                  {previewJob.employment_type && <span>{previewJob.employment_type}</span>}
+                  {previewJob.work_arrangement && <span>{previewJob.work_arrangement}</span>}
+                </div>
+              </div>
+
+              {previewJob.description && (
+                <section>
+                  <h4 className="font-semibold text-gray-900 mb-2">Deskripsi</h4>
+                  <p className="text-gray-700 whitespace-pre-wrap">{previewJob.description}</p>
+                </section>
+              )}
+
+              {previewJob.responsibilities && (
+                <section>
+                  <h4 className="font-semibold text-gray-900 mb-2">Responsibilities</h4>
+                  <p className="text-gray-700 whitespace-pre-wrap">{previewJob.responsibilities}</p>
+                </section>
+              )}
+
+              {previewJob.requirements && (
+                <section>
+                  <h4 className="font-semibold text-gray-900 mb-2">Requirements</h4>
+                  <p className="text-gray-700 whitespace-pre-wrap">{previewJob.requirements}</p>
+                </section>
+              )}
+
+              {previewJob.benefits && (
+                <section>
+                  <h4 className="font-semibold text-gray-900 mb-2">Benefits</h4>
+                  <p className="text-gray-700 whitespace-pre-wrap">{previewJob.benefits}</p>
+                </section>
+              )}
+
+              <button
+                className="w-full py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                disabled
+              >
+                Lamar via WhatsApp (Preview Only)
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -498,7 +675,13 @@ export default function JobsPage() {
                   <td className="px-6 py-3 text-gray-500">{job.companies?.name || '-'}</td>
                   <td className="px-6 py-3 text-gray-500">{job.job_categories?.name || '-'}</td>
                   <td className="px-6 py-3">
-                    <span className="inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold bg-slate-100 text-slate-700">
+                    <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${
+                      job.status === 'published'
+                        ? 'bg-green-100 text-green-700'
+                        : job.status === 'closed'
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-slate-100 text-slate-700'
+                    }`}>
                       {job.status}
                     </span>
                   </td>
@@ -512,7 +695,14 @@ export default function JobsPage() {
                         Edit
                       </button>
                       <button
-                        onClick={() => handleDelete(job.id)}
+                        onClick={() => duplicateJob(job)}
+                        className="p-1.5 text-yellow-600 hover:bg-yellow-50 rounded transition"
+                        title="Duplicate"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => openDeleteConfirm(job.id)}
                         className="p-1.5 text-red-500 hover:bg-red-50 rounded transition"
                         title="Hapus"
                       >
@@ -526,6 +716,19 @@ export default function JobsPage() {
           </table>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={showConfirm}
+        onClose={() => {
+          setShowConfirm(false)
+          setDeleteId(null)
+        }}
+        onConfirm={handleDelete}
+        title="Hapus Lowongan"
+        message="Apakah Anda yakin ingin menghapus lowongan ini?"
+        confirmText="Hapus"
+        cancelText="Batal"
+      />
     </div>
   )
 }

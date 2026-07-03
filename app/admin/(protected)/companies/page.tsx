@@ -1,6 +1,9 @@
 "use client"
 
 import { useEffect, useState } from 'react'
+import { X } from 'lucide-react'
+import { useToast } from '@/components/ui/Toast'
+import ConfirmModal from '@/components/ui/ConfirmModal'
 
 interface Company {
   id: string
@@ -36,14 +39,25 @@ export default function CompaniesPage() {
     is_active: true,
   })
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [showConfirm, setShowConfirm] = useState(false)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const { addToast } = useToast()
 
   const fetchCompanies = async () => {
     setLoading(true)
-    const res = await fetch('/api/admin/companies')
-    const data = await res.json()
-    setCompanies(data)
-    setLoading(false)
+    try {
+      const res = await fetch('/api/admin/companies')
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error)
+      }
+      const data = await res.json()
+      setCompanies(data)
+    } catch (err: any) {
+      addToast({ type: 'error', message: err.message })
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -64,7 +78,6 @@ export default function CompaniesPage() {
       whatsapp_hr: '',
       is_active: true,
     })
-    setError(null)
     setShowForm(true)
   }
 
@@ -82,14 +95,12 @@ export default function CompaniesPage() {
       whatsapp_hr: company.whatsapp_hr,
       is_active: company.is_active,
     })
-    setError(null)
     setShowForm(true)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
-    setError(null)
 
     try {
       const method = editingCompany ? 'PATCH' : 'POST'
@@ -106,28 +117,55 @@ export default function CompaniesPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Gagal menyimpan perusahaan.')
 
+      addToast({ type: 'success', message: 'Perusahaan berhasil disimpan!' })
       setShowForm(false)
       fetchCompanies()
     } catch (err: any) {
-      setError(err.message)
+      addToast({ type: 'error', message: err.message })
     } finally {
       setSaving(false)
     }
   }
 
   const handleToggleActive = async (company: Company) => {
-    await fetch(`/api/admin/companies/${company.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_active: !company.is_active }),
-    })
-    fetchCompanies()
+    try {
+      const res = await fetch(`/api/admin/companies/${company.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: !company.is_active }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error)
+      }
+      addToast({ type: 'success', message: 'Status perusahaan berhasil diubah!' })
+      fetchCompanies()
+    } catch (err: any) {
+      addToast({ type: 'error', message: err.message })
+    }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Hapus perusahaan ini?')) return
-    await fetch(`/api/admin/companies/${id}`, { method: 'DELETE' })
-    fetchCompanies()
+  const openDeleteConfirm = (id: string) => {
+    setDeleteId(id)
+    setShowConfirm(true)
+  }
+
+  const handleDelete = async () => {
+    if (!deleteId) return
+    try {
+      const res = await fetch(`/api/admin/companies/${deleteId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error)
+      }
+      addToast({ type: 'success', message: 'Perusahaan berhasil dihapus!' })
+      fetchCompanies()
+    } catch (err: any) {
+      addToast({ type: 'error', message: err.message })
+    } finally {
+      setShowConfirm(false)
+      setDeleteId(null)
+    }
   }
 
   return (
@@ -159,13 +197,9 @@ export default function CompaniesPage() {
                 onClick={() => setShowForm(false)}
                 className="text-gray-500 hover:text-gray-700"
               >
-                Batal
+                <X className="w-5 h-5" />
               </button>
             </div>
-
-            {error && (
-              <div className="mb-4 p-4 rounded-lg bg-red-50 text-red-700">{error}</div>
-            )}
 
             <form onSubmit={handleSubmit} className="grid gap-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -346,7 +380,7 @@ export default function CompaniesPage() {
                         Edit
                       </button>
                       <button
-                        onClick={() => handleDelete(company.id)}
+                        onClick={() => openDeleteConfirm(company.id)}
                         className="p-1.5 text-red-500 hover:bg-red-50 rounded transition"
                         title="Hapus"
                       >
@@ -360,6 +394,19 @@ export default function CompaniesPage() {
           </table>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={showConfirm}
+        onClose={() => {
+          setShowConfirm(false)
+          setDeleteId(null)
+        }}
+        onConfirm={handleDelete}
+        title="Hapus Perusahaan"
+        message="Apakah Anda yakin ingin menghapus perusahaan ini?"
+        confirmText="Hapus"
+        cancelText="Batal"
+      />
     </div>
   )
 }

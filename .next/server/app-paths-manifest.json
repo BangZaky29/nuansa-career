@@ -1,8 +1,6 @@
 {
   "/page": "app/page.js",
-  "/admin/login/page": "app/admin/login/page.js",
-  "/api/admin/companies/route": "app/api/admin/companies/route.js",
-  "/api/admin/companies/[id]/route": "app/api/admin/companies/[id]/route.js",
-  "/admin/(protected)/dashboard/page": "app/admin/(protected)/dashboard/page.js",
-  "/admin/(protected)/companies/page": "app/admin/(protected)/companies/page.js"
+  "/admin/(protected)/companies/page": "app/admin/(protected)/companies/page.js",
+  "/admin/(protected)/categories/page": "app/admin/(protected)/categories/page.js",
+  "/admin/(protected)/jobs/page": "app/admin/(protected)/jobs/page.js"
 }

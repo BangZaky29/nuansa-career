@@ -1,12 +1,17 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { slugify } from '@/lib/slug'
+import { requireAdmin } from '@/lib/supabase/admin-auth'
+import { logAdminAction } from '@/lib/admin-log'
 
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
+    const { error: authError } = await requireAdmin()
+    if (authError) return authError
+
     const supabase = createAdminClient()
     const { data, error } = await supabase
       .from('jobs')
@@ -26,6 +31,9 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
+    const { adminUser, error: authError } = await requireAdmin()
+    if (authError) return authError
+
     const supabase = createAdminClient()
     const body = await request.json()
 
@@ -53,6 +61,7 @@ export async function PATCH(
         responsibilities: body.responsibilities,
         requirements: body.requirements,
         benefits: body.benefits,
+        expired_at: body.expired_at || null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', params.id)
@@ -60,6 +69,15 @@ export async function PATCH(
       .single()
 
     if (error) throw error
+
+    await logAdminAction(
+      adminUser!.user_id,
+      'update',
+      'jobs',
+      data.id,
+      `Updated job: ${data.title}`
+    )
+
     return NextResponse.json(data)
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -71,13 +89,27 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const { adminUser, error: authError } = await requireAdmin()
+    if (authError) return authError
+
     const supabase = createAdminClient()
+    const { data: job } = await supabase.from('jobs').select('title').eq('id', params.id).single()
+
     const { error } = await supabase
       .from('jobs')
       .delete()
       .eq('id', params.id)
 
     if (error) throw error
+
+    await logAdminAction(
+      adminUser!.user_id,
+      'delete',
+      'jobs',
+      params.id,
+      `Deleted job: ${job?.title || params.id}`
+    )
+
     return NextResponse.json({ success: true })
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })

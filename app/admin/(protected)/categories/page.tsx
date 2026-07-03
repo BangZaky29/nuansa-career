@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { Plus, Pencil, Trash2, Check, X } from 'lucide-react'
+import { useToast } from '@/components/ui/Toast'
+import ConfirmModal from '@/components/ui/ConfirmModal'
 
 interface Category {
   id: string
@@ -20,14 +22,25 @@ export default function CategoriesPage() {
   const [formName, setFormName] = useState('')
   const [formIcon, setFormIcon] = useState('')
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [showConfirm, setShowConfirm] = useState(false)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const { addToast } = useToast()
 
   const fetchCategories = async () => {
     setLoading(true)
-    const res = await fetch('/api/admin/categories')
-    const data = await res.json()
-    setCategories(data)
-    setLoading(false)
+    try {
+      const res = await fetch('/api/admin/categories')
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error)
+      }
+      const data = await res.json()
+      setCategories(data)
+    } catch (err: any) {
+      addToast({ type: 'error', message: err.message })
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -38,7 +51,6 @@ export default function CategoriesPage() {
     setEditingItem(null)
     setFormName('')
     setFormIcon('')
-    setError(null)
     setShowForm(true)
   }
 
@@ -46,14 +58,12 @@ export default function CategoriesPage() {
     setEditingItem(cat)
     setFormName(cat.name)
     setFormIcon(cat.icon || '')
-    setError(null)
     setShowForm(true)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
-    setError(null)
 
     try {
       const method = editingItem ? 'PATCH' : 'POST'
@@ -69,28 +79,55 @@ export default function CategoriesPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Gagal menyimpan')
 
+      addToast({ type: 'success', message: 'Kategori berhasil disimpan!' })
       setShowForm(false)
       fetchCategories()
     } catch (err: any) {
-      setError(err.message)
+      addToast({ type: 'error', message: err.message })
     } finally {
       setSaving(false)
     }
   }
 
   const handleToggleActive = async (cat: Category) => {
-    await fetch(`/api/admin/categories/${cat.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_active: !cat.is_active }),
-    })
-    fetchCategories()
+    try {
+      const res = await fetch(`/api/admin/categories/${cat.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: !cat.is_active }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error)
+      }
+      addToast({ type: 'success', message: 'Status kategori berhasil diubah!' })
+      fetchCategories()
+    } catch (err: any) {
+      addToast({ type: 'error', message: err.message })
+    }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Hapus kategori ini?')) return
-    await fetch(`/api/admin/categories/${id}`, { method: 'DELETE' })
-    fetchCategories()
+  const openDeleteConfirm = (id: string) => {
+    setDeleteId(id)
+    setShowConfirm(true)
+  }
+
+  const handleDelete = async () => {
+    if (!deleteId) return
+    try {
+      const res = await fetch(`/api/admin/categories/${deleteId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error)
+      }
+      addToast({ type: 'success', message: 'Kategori berhasil dihapus!' })
+      fetchCategories()
+    } catch (err: any) {
+      addToast({ type: 'error', message: err.message })
+    } finally {
+      setShowConfirm(false)
+      setDeleteId(null)
+    }
   }
 
   return (
@@ -113,9 +150,6 @@ export default function CategoriesPage() {
             <h2 className="text-lg font-semibold mb-4">
               {editingItem ? 'Edit Kategori' : 'Tambah Kategori'}
             </h2>
-            {error && (
-              <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg">{error}</div>
-            )}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nama Kategori *</label>
@@ -207,7 +241,7 @@ export default function CategoriesPage() {
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => handleDelete(cat.id)}
+                        onClick={() => openDeleteConfirm(cat.id)}
                         className="p-1.5 text-red-500 hover:bg-red-50 rounded transition"
                         title="Hapus"
                       >
@@ -221,6 +255,19 @@ export default function CategoriesPage() {
           </table>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={showConfirm}
+        onClose={() => {
+          setShowConfirm(false)
+          setDeleteId(null)
+        }}
+        onConfirm={handleDelete}
+        title="Hapus Kategori"
+        message="Apakah Anda yakin ingin menghapus kategori ini?"
+        confirmText="Hapus"
+        cancelText="Batal"
+      />
     </div>
   )
 }
